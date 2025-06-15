@@ -1,0 +1,63 @@
+-- Crear base de datos
+CREATE DATABASE InventarioComputadoras;
+GO
+
+USE InventarioComputadoras;
+GO
+
+-- Tabla Categorías
+CREATE TABLE Categorias (
+    CategoriaID INT IDENTITY(1,1) PRIMARY KEY,
+    Nombre NVARCHAR(100) NOT NULL,
+    Descripcion NVARCHAR(255) NULL
+);
+GO
+
+-- Tabla Proveedores
+CREATE TABLE Proveedores (
+    ProveedorID INT IDENTITY(1,1) PRIMARY KEY,
+    Nombre NVARCHAR(150) NOT NULL,
+    Telefono NVARCHAR(20) NULL,
+    Email NVARCHAR(100) NULL,
+    Direccion NVARCHAR(255) NULL
+);
+GO
+
+-- Tabla Computadoras
+CREATE TABLE Computadoras (
+    ComputadoraID INT IDENTITY(1,1) PRIMARY KEY,
+    CategoriaID INT NOT NULL,
+    ProveedorID INT NULL,
+    Marca NVARCHAR(100) NOT NULL,
+    Modelo NVARCHAR(100) NOT NULL,
+    NumeroSerie NVARCHAR(100) UNIQUE NOT NULL,
+    FechaCompra DATE NULL,
+    Precio DECIMAL(10,2) NULL,
+    Estado NVARCHAR(50) NOT NULL DEFAULT 'Disponible',
+    Observaciones NVARCHAR(255) NULL,
+    FOREIGN KEY (CategoriaID) REFERENCES Categorias(CategoriaID),
+    FOREIGN KEY (ProveedorID) REFERENCES Proveedores(ProveedorID)
+);
+GO
+
+-- Tabla Movimientos de Inventario
+CREATE TABLE MovimientosInventario (
+    MovimientoID INT IDENTITY(1,1) PRIMARY KEY,
+    ComputadoraID INT NOT NULL,
+    TipoMovimiento NVARCHAR(50) NOT NULL, -- 'Entrada', 'Salida', 'Mantenimiento'
+    Cantidad INT NOT NULL DEFAULT 1,
+    FechaMovimiento DATETIME NOT NULL DEFAULT GETDATE(),
+    Descripcion NVARCHAR(255) NULL,
+    FOREIGN KEY (ComputadoraID) REFERENCES Computadoras(ComputadoraID)
+);
+GO
+
+-- Tabla Usuarios
+CREATE TABLE Users (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+	name NVARCHAR(150) NOT NULL,
+    passwordHash NVARCHAR(64) NOT NULL,  -- Contraseña hasheada
+    email NVARCHAR(100) NULL,
+    status TINYINT NOT NULL
+);
+GO
