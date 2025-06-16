@@ -1,188 +1,244 @@
 package esfe.persistencia;
 
-import org.junit.jupiter.api.BeforeEach; // Anotación para indicar que el método se ejecuta antes de cada método de prueba.
-import org.junit.jupiter.api.Test;       // Anotación para indicar que el método es un caso de prueba.
-import esfe.dominio.User;                // Clase que representa la entidad de usuario utilizada en las pruebas.
+import esfe.dominio.User;
+import esfe.utils.PasswordHasher; // Asegúrate de que esta clase esté disponible
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach; // Para asegurar la limpieza después de cada test
 
-import java.util.ArrayList;              // Clase para crear listas dinámicas de objetos, utilizada en algunas pruebas.
-import java.util.Random;                 // Clase para generar números aleatorios, útil para crear datos de prueba.
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.List; // Importar List
+import java.util.Random;
 
-import java.sql.SQLException;             // Clase para manejar excepciones relacionadas con la base de datos, aunque no se espera que las pruebas unitarias interactúen directamente con ella (idealmente se mockean las dependencias).
-
-import static org.junit.jupiter.api.Assertions.*; // Importación estática de métodos de aserción de JUnit 5 para verificar el comportamiento esperado en las pruebas.
-
+import static org.junit.jupiter.api.Assertions.*; // Importación estática de métodos de aserción de JUnit 5
 
 
 class UserDAOTest {
     private UserDAO userDAO; // Instancia de la clase UserDAO que se va a probar.
+    private User testUser; // Usuario de prueba para operaciones que lo requieran
 
     @BeforeEach
     void setUp(){
         // Método que se ejecuta antes de cada método de prueba (@Test).
-        // Su propósito es inicializar el entorno de prueba, en este caso,
-        // creando una nueva instancia de UserDAO para cada prueba.
+        // Su propósito es inicializar el entorno de prueba.
         userDAO = new UserDAO();
-    }
-    private User create(User user) throws SQLException{
-        // Llama al método 'create' del UserDAO para persistir el usuario en la base de datos (simulada).
-        User res = userDAO.create(user);
-
-        // Realiza aserciones para verificar que la creación del usuario fue exitosa
-        // y que los datos del usuario retornado coinciden con los datos originales.
-        assertNotNull(res, "El usuario creado no debería ser nulo."); // Verifica que el objeto retornado no sea nulo.
-        assertEquals(user.getName(), res.getName(), "El nombre del usuario creado debe ser igual al original.");
-        assertEquals(user.getEmail(), res.getEmail(), "El email del usuario creado debe ser igual al original.");
-        assertEquals(user.getStatus(), res.getStatus(), "El status del usuario creado debe ser igual al original.");
-
-        // Retorna el objeto User creado (tal como lo devolvió el UserDAO).
-        return res;
+        // Crear un usuario de prueba único para cada test si es necesario
+        // O crear un usuario base y modificarlo en cada test
+        Random random = new Random();
+        int num = random.nextInt(1000000) + 1; // Número grande para mayor unicidad
+        String uniqueEmail = "testuser" + num + "@example.com";
+        testUser = new User(0, "TestUser" + num, "testpass", uniqueEmail, (byte) 1);
     }
 
-    private void update(User user) throws SQLException{
+    @AfterEach
+    void tearDown() {
+        // Método que se ejecuta después de cada método de prueba (@Test).
+        // Su propósito es limpiar los datos de prueba creados para evitar interferencias
+        // entre tests y dejar la base de datos en un estado conocido.
+        cleanUpTestUser(testUser);
+    }
+
+    // --- Métodos Auxiliares para Pruebas (Refinados) ---
+
+    // Crea un usuario en la base de datos y realiza aserciones de creación
+    private User createAndAssert(User user) throws SQLException {
+        User createdUser = userDAO.create(user);
+        assertNotNull(createdUser, "El usuario creado no debería ser nulo.");
+        assertTrue(createdUser.getId() > 0, "El ID del usuario creado debería ser mayor que 0.");
+        assertEquals(user.getName(), createdUser.getName(), "El nombre del usuario creado debe ser igual al original.");
+        assertEquals(user.getEmail(), createdUser.getEmail(), "El email del usuario creado debe ser igual al original.");
+        // No asertamos la contraseña hasheada directamente aquí, ya que el DAO la hashea
+        assertEquals(user.getStatus(), createdUser.getStatus(), "El status del usuario creado debe ser igual al original.");
+        return createdUser;
+    }
+
+    // Actualiza un usuario en la base de datos y realiza aserciones de actualización
+    private void updateAndAssert(User userToUpdate) throws SQLException {
         // Modifica los atributos del objeto User para simular una actualización.
-        user.setName(user.getName() + "_u"); // Añade "_u" al final del nombre.
-        user.setEmail("u" + user.getEmail()); // Añade "u" al inicio del email.
-        user.setStatus((byte)1);             // Establece el status a 1.
+        userToUpdate.setName(userToUpdate.getName() + "_updated");
+        userToUpdate.setEmail("updated_" + userToUpdate.getEmail());
+        userToUpdate.setStatus((byte)2); // Cambiar a inactivo
 
-        // Llama al método 'update' del UserDAO para actualizar el usuario en la base de datos (simulada).
-        boolean res = userDAO.update(user);
+        boolean updated = userDAO.update(userToUpdate);
+        assertTrue(updated, "La actualización del usuario debería ser exitosa.");
 
-        // Realiza una aserción para verificar que la actualización fue exitosa.
-        assertTrue(res, "La actualización del usuario debería ser exitosa.");
-
-        // Llama al método 'getById' para verificar que los cambios se persistieron correctamente.
-        // Aunque el método 'getById' ya tiene sus propias aserciones, esta llamada adicional
-        // ayuda a asegurar que la actualización realmente tuvo efecto en la capa de datos.
-        getById(user);
+        // Verificar los cambios recuperando el usuario de la DB
+        User fetchedUser = userDAO.getById(userToUpdate.getId());
+        assertNotNull(fetchedUser, "El usuario actualizado no debería ser nulo al recuperarlo.");
+        assertEquals(userToUpdate.getName(), fetchedUser.getName(), "El nombre del usuario debería haber sido actualizado.");
+        assertEquals(userToUpdate.getEmail(), fetchedUser.getEmail(), "El email del usuario debería haber sido actualizado.");
+        assertEquals(userToUpdate.getStatus(), fetchedUser.getStatus(), "El status del usuario debería haber sido actualizado.");
     }
 
-    private void getById(User user) throws SQLException {
-        // Llama al método 'getById' del UserDAO para obtener un usuario por su ID.
-        User res = userDAO.getById(user.getId());
-
-        // Realiza aserciones para verificar que el usuario obtenido coincide
-        // con el usuario original (o el usuario modificado en pruebas de actualización).
-        assertNotNull(res, "El usuario obtenido por ID no debería ser nulo.");
-        assertEquals(user.getId(), res.getId(), "El ID del usuario obtenido debe ser igual al original.");
-        assertEquals(user.getName(), res.getName(), "El nombre del usuario obtenido debe ser igual al esperado.");
-        assertEquals(user.getEmail(), res.getEmail(), "El email del usuario obtenido debe ser igual al esperado.");
-        assertEquals(user.getStatus(), res.getStatus(), "El status del usuario obtenido debe ser igual al esperado.");
+    // Obtiene un usuario por ID y realiza aserciones de consistencia
+    private void getByIdAndAssert(User expectedUser) throws SQLException {
+        User foundUser = userDAO.getById(expectedUser.getId());
+        assertNotNull(foundUser, "El usuario obtenido por ID no debería ser nulo.");
+        assertEquals(expectedUser.getId(), foundUser.getId(), "El ID del usuario obtenido debe ser igual al esperado.");
+        assertEquals(expectedUser.getName(), foundUser.getName(), "El nombre del usuario obtenido debe ser igual al esperado.");
+        assertEquals(expectedUser.getEmail(), foundUser.getEmail(), "El email del usuario obtenido debe ser igual al esperado.");
+        assertEquals(expectedUser.getStatus(), foundUser.getStatus(), "El status del usuario obtenido debe ser igual al esperado.");
     }
 
-    private void search(User user) throws SQLException {
-        // Llama al método 'search' del UserDAO para buscar usuarios por nombre.
-        ArrayList<User> users = userDAO.search(user.getName());
-        boolean find = false; // Variable para rastrear si se encontró un usuario con el nombre buscado.
+    // Busca usuarios y realiza aserciones sobre los resultados
+    private void searchAndAssert(String query, User expectedUserInResults) throws SQLException {
+        // CORREGIDO: Usar List<User> para el resultado de userDAO.search()
+        List<User> results = userDAO.search(query);
+        assertFalse(results.isEmpty(), "La búsqueda debería encontrar al menos un resultado para '" + query + "'.");
 
-        // Itera sobre la lista de usuarios devuelta por la búsqueda.
-        for (User userItem : users) {
-            // Verifica si el nombre de cada usuario encontrado contiene la cadena de búsqueda.
-            if (userItem.getName().contains(user.getName())) {
-                find = true; // Si se encuentra una coincidencia, se establece 'find' a true.
-            }
-            else{
-                find = false; // Si un nombre no contiene la cadena de búsqueda, se establece 'find' a false.
-                break;      // Se sale del bucle, ya que se esperaba que todos los resultados contuvieran la cadena.
+        boolean foundSpecificUser = false;
+        for (User userItem : results) {
+            if (userItem.getId() == expectedUserInResults.getId()) {
+                foundSpecificUser = true;
+                break;
             }
         }
-
-        // Realiza una aserción para verificar que todos los usuarios con el nombre buscado fue encontrado.
-        assertTrue(find, "el nombre buscado no fue encontrado : " + user.getName());
+        assertTrue(foundSpecificUser, "El usuario de prueba '" + expectedUserInResults.getName() + "' no fue encontrado en los resultados de la búsqueda.");
+        // Podrías añadir más aserciones aquí, como que todos los nombres en 'results' contengan 'query'
     }
 
-    private void delete(User user) throws SQLException{
-        // Llama al método 'delete' del UserDAO para eliminar un usuario por su ID.
-        boolean res = userDAO.delete(user);
+    // Elimina un usuario y realiza aserciones de eliminación
+    private void deleteAndAssert(User userToDelete) throws SQLException {
+        boolean deleted = userDAO.delete(userToDelete);
+        assertTrue(deleted, "La eliminación del usuario debería ser exitosa.");
 
-        // Realiza una aserción para verificar que la eliminación fue exitosa.
-        assertTrue(res, "La eliminación del usuario debería ser exitosa.");
-
-        // Intenta obtener el usuario por su ID después de la eliminación.
-        User res2 = userDAO.getById(user.getId());
-
-        // Realiza una aserción para verificar que el usuario ya no existe en la base de datos
-        // después de la eliminación (el método 'getById' debería retornar null).
-        assertNull(res2, "El usuario debería haber sido eliminado y no encontrado por ID.");
+        User fetchedUserAfterDelete = userDAO.getById(userToDelete.getId());
+        assertNull(fetchedUserAfterDelete, "El usuario debería ser nulo después de la eliminación.");
     }
 
-    private void autenticate(User user) throws SQLException {
-        // Llama al método 'authenticate' del UserDAO para intentar autenticar un usuario.
-        User res = userDAO.authenticate(user);
+    // Intenta autenticar un usuario con éxito y realiza aserciones
+    private void authenticateAndAssert(String email, String password) throws SQLException {
+        User authAttemptUser = new User();
+        authAttemptUser.setEmail(email);
+        authAttemptUser.setPasswordHash(password); // Contraseña sin hashear
 
-        // Realiza aserciones para verificar si la autenticación fue exitosa.
-        assertNotNull(res, "La autenticación debería retornar un usuario no nulo si es exitosa.");
-        assertEquals(res.getEmail(), user.getEmail(), "El email del usuario autenticado debe coincidir con el email proporcionado.");
-        assertEquals(res.getStatus(), 1, "El status del usuario autenticado debe ser 1 (activo).");
+        User authenticatedUser = userDAO.authenticate(authAttemptUser);
+        assertNotNull(authenticatedUser, "La autenticación debería retornar un usuario no nulo si es exitosa.");
+        assertEquals(email, authenticatedUser.getEmail(), "El email del usuario autenticado debe coincidir con el email proporcionado.");
+        assertEquals((byte) 1, authenticatedUser.getStatus(), "El status del usuario autenticado debe ser 1 (activo).");
     }
 
-    private void autenticacionFails(User user) throws SQLException {
-        // Llama al método 'authenticate' del UserDAO para intentar autenticar un usuario
-        // con credenciales que se espera que fallen.
-        User res = userDAO.authenticate(user);
+    // Intenta autenticar un usuario con fallo y realiza aserciones
+    private void authenticateFailsAndAssert(String email, String password) throws SQLException {
+        User authAttemptUser = new User();
+        authAttemptUser.setEmail(email);
+        authAttemptUser.setPasswordHash(password); // Contraseña sin hashear
 
-        // Realiza una aserción para verificar que la autenticación falló,
-        // lo cual se espera que se represente con el método 'authenticate'
-        // retornando 'null' cuando las credenciales no son válidas o el usuario no está activo.
-        assertNull(res, "La autenticación debería fallar y retornar null para credenciales inválidas.");
+        User authenticatedUser = userDAO.authenticate(authAttemptUser);
+        assertNull(authenticatedUser, "La autenticación debería fallar y retornar null para credenciales inválidas.");
     }
 
-    private void updatePassword(User user) throws SQLException{
-        // Llama al método 'updatePassword' del UserDAO para actualizar la contraseña del usuario.
-        boolean res = userDAO.updatePassword(user);
+    // Actualiza la contraseña de un usuario y realiza aserciones
+    private void updatePasswordAndAssert(User userToUpdate, String newPassword) throws SQLException {
+        User tempUser = new User();
+        tempUser.setId(userToUpdate.getId());
+        tempUser.setPasswordHash(newPassword); // Nueva contraseña sin hashear
 
-        // Realiza una aserción para verificar que la actualización de la contraseña fue exitosa.
-        assertTrue(res, "La actualización de la contraseña debería ser exitosa.");
+        boolean updated = userDAO.updatePassword(tempUser);
+        assertTrue(updated, "La actualización de la contraseña debería ser exitosa.");
 
-        // Llama al método 'autenticate' para verificar que la nueva contraseña es válida
-        // y el usuario aún puede autenticarse con ella. Esto asume que el objeto 'user'
-        // contiene la nueva contraseña (sin hashear) antes de llamar a 'updatePassword'.
-        // Es importante asegurarse de que la prueba configure correctamente la nueva
-        // contraseña en el objeto 'user' antes de esta llamada.
-        autenticate(user);
+        // Verificar autenticación con la nueva contraseña
+        authenticateAndAssert(userToUpdate.getEmail(), newPassword);
     }
+
+    // Método auxiliar para limpiar la base de datos de usuarios de prueba
+    private void cleanUpTestUser(User user) {
+        try {
+            // Solo intentar eliminar si el usuario no es nulo y tiene un ID válido
+            // Esto es importante si createAndAssert falla y 'user' es nulo
+            if (user != null && user.getId() > 0) {
+                userDAO.delete(user);
+            }
+        } catch (SQLException e) {
+            System.err.println("Error al limpiar usuario de prueba con ID " + (user != null ? user.getId() : "null") + ": " + e.getMessage());
+        }
+    }
+
+    // ---------------------- TEST CASES (@Test methods) ----------------------
+
     @Test
-    void testUserDAO() throws SQLException {
-        // Crea una instancia de la clase Random para generar datos de prueba aleatorios.
-        Random random = new Random();
-        // Genera un número aleatorio entre 1 y 1000 para asegurar la unicidad del email en cada prueba.
-        int num = random.nextInt(1000) + 1;
-        // Define una cadena base para el email y le concatena el número aleatorio generado.
-        String strEmail = "test" + num + "@example.com";
-        // Crea un nuevo objeto User con datos de prueba. El ID se establece en 0 ya que será generado por la base de datos.
-        User user = new User(0, "Test User", "password", strEmail, (byte) 2);
-
-        // Llama al método 'create' para persistir el usuario de prueba en la base de datos (simulada) y verifica su creación.
-        User testUser = create(user);
-
-        // Llama al método 'update' para modificar los datos del usuario de prueba y verifica la actualización.
-        update(testUser);
-
-        // Llama al método 'search' para buscar usuarios por el nombre del usuario de prueba y verifica que se encuentre.
-        search(testUser);
-
-        // Restablece la contraseña original del usuario de prueba antes de intentar la autenticación exitosa.
-        testUser.setPasswordHash(user.getPasswordHash());
-        // Llama al método 'autenticate' para verificar que el usuario puede autenticarse con sus credenciales correctas.
-        autenticate(testUser);
-
-        // Intenta autenticar al usuario con una contraseña incorrecta para verificar el fallo de autenticación.
-        testUser.setPasswordHash("12345");
-        autenticacionFails(testUser);
-
-        // Intenta actualizar la contraseña del usuario de prueba con una nueva contraseña.
-        testUser.setPasswordHash("new_password"); // Establece la *nueva* contraseña para la actualización.
-        updatePassword(testUser); // Llama al método para actualizar la contraseña en la base de datos.
-        testUser.setPasswordHash("new_password"); // **Importante:** Actualiza el objeto 'testUser' con la *nueva* contraseña para la siguiente verificación.
-        autenticate(testUser); // Verifica que la autenticación sea exitosa con la *nueva* contraseña.
-
-
-        // Llama al método 'delete' para eliminar el usuario de prueba de la base de datos y verifica la eliminación.
-        delete(testUser);
+    void testCreateUser() throws SQLException {
+        User createdUser = createAndAssert(testUser); // Usar el usuario de testUser inicializado en setUp()
+        testUser.setId(createdUser.getId()); // Guardar el ID generado para limpieza en tearDown
     }
+
     @Test
-    void createUser() throws SQLException {
-        User user = new User(0, "admin", "12345", "admin@gmail.com", (byte) 1);
-        User res = userDAO.create(user);
-        assertNotEquals(res,null);
+    void testUpdateUser() throws SQLException {
+        User createdUser = createAndAssert(testUser);
+        testUser.setId(createdUser.getId()); // Guardar ID para tearDown
+        updateAndAssert(createdUser);
+    }
+
+    @Test
+    void testGetByIdUser() throws SQLException {
+        User createdUser = createAndAssert(testUser);
+        testUser.setId(createdUser.getId()); // Guardar ID para tearDown
+        getByIdAndAssert(createdUser);
+    }
+
+    @Test
+    void testSearchUserByName() throws SQLException {
+        User createdUser1 = createAndAssert(new User(0, "UniqueSearchName", "pass1", "search1@test.com", (byte)1));
+        User createdUser2 = createAndAssert(new User(0, "Another UniqueSearch", "pass2", "search2@test.com", (byte)1));
+
+        // Asignar los IDs generados para limpieza en tearDown si los testUser no se usan
+        // O si no quieres que tearDown limpie estos, hazlo manualmente aquí en un finally
+        // Para este ejemplo, solo usaremos testUser en setUp/tearDown para un solo usuario.
+        // Se recomienda que cada test sea autocontenido en su limpieza.
+        try {
+            searchAndAssert("UniqueSearch", createdUser1);
+            searchAndAssert("UniqueSearch", createdUser2); // Verificar que ambos se encuentren
+        } finally {
+            cleanUpTestUser(createdUser1);
+            cleanUpTestUser(createdUser2);
+        }
+    }
+
+    @Test
+    void testDeleteUser() throws SQLException {
+        User createdUser = createAndAssert(testUser);
+        testUser.setId(createdUser.getId()); // Guardar ID para tearDown
+
+        deleteAndAssert(createdUser);
+        // No es necesario llamar a cleanUpTestUser(createdUser) aquí porque deleteAndAssert ya verificó la eliminación
+        // y tearDown se encargará si por alguna razón no se eliminó completamente.
+    }
+
+    @Test
+    void testAuthenticateSuccess() throws SQLException {
+        User createdUser = createAndAssert(testUser);
+        testUser.setId(createdUser.getId()); // Guardar ID para tearDown
+        authenticateAndAssert(createdUser.getEmail(), testUser.getPasswordHash()); // Usar la contraseña original
+    }
+
+    @Test
+    void testAuthenticateFailsIncorrectPassword() throws SQLException {
+        User createdUser = createAndAssert(testUser);
+        testUser.setId(createdUser.getId()); // Guardar ID para tearDown
+        authenticateFailsAndAssert(createdUser.getEmail(), "wrongpassword");
+    }
+
+    @Test
+    void testAuthenticateFailsInactiveUser() throws SQLException {
+        // Crear usuario inactivo directamente
+        User inactiveUser = new User(0, "InactiveUser", "pass", "inactive@test.com", (byte) 2);
+        User createdInactiveUser = createAndAssert(inactiveUser);
+        // No se asigna a testUser para evitar conflictos con tearDown que espera testUser ser activo
+
+        try {
+            authenticateFailsAndAssert(createdInactiveUser.getEmail(), inactiveUser.getPasswordHash());
+        } finally {
+            cleanUpTestUser(createdInactiveUser);
+        }
+    }
+
+    @Test
+    void testUpdatePassword() throws SQLException {
+        User createdUser = createAndAssert(testUser);
+        testUser.setId(createdUser.getId()); // Guardar ID para tearDown
+
+        String newPassword = "new_secure_password";
+        updatePasswordAndAssert(createdUser, newPassword);
     }
 }

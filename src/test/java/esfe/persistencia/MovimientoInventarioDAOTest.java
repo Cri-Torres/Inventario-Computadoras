@@ -20,7 +20,7 @@ class MovimientoInventarioDAOTest {
 
     // ID de una computadora existente en la base de datos de prueba.
     // ¡IMPORTANTE! Asegúrate de que exista una computadora con este ID en tu tabla 'Computadoras'.
-    private final int COMPUTADORA_ID_EXISTENTE = 6; // CAMBIO AQUÍ: Ahora usa el ID 6
+    private final int COMPUTADORA_ID_EXISTENTE = 6; // Este ID debe existir en tu DB de prueba
 
     @BeforeEach
     void setUp() {
@@ -33,8 +33,10 @@ class MovimientoInventarioDAOTest {
         // Limpieza: Intentar eliminar todos los movimientos de inventario creados durante el test
         for (Integer id : idsCreadosParaLimpieza) {
             try {
-                movimientoInventarioDAO.delete(id);
-                System.out.println("Limpiado: Movimiento de Inventario con ID " + id + " eliminado.");
+                if (movimientoInventarioDAO.getById(id) != null) { // Solo intentar eliminar si aún existe
+                    movimientoInventarioDAO.delete(id);
+                    System.out.println("Limpiado: Movimiento de Inventario con ID " + id + " eliminado.");
+                }
             } catch (SQLException e) {
                 System.err.println("Error al limpiar movimiento de inventario con ID " + id + ": " + e.getMessage());
                 // No lanzar la excepción para que la limpieza continúe
@@ -52,7 +54,8 @@ class MovimientoInventarioDAOTest {
      */
     private MovimientoInventario createMovimientoInventarioParaTest() throws SQLException {
         Random rand = new Random();
-        byte tipoMovimiento = (byte) (rand.nextInt(3) + 1); // Genera 1, 2 o 3
+        // Genera 1 (Entrada), 2 (Salida) o 3 (Mantenimiento)
+        byte tipoMovimiento = (byte) (rand.nextInt(3) + 1);
         String descripcionUnica = "Movimiento de Prueba - " + System.currentTimeMillis() + "-" + rand.nextInt(10000);
         int cantidad = rand.nextInt(5) + 1; // Cantidad entre 1 y 5
 
@@ -84,7 +87,7 @@ class MovimientoInventarioDAOTest {
     void testCreate() throws SQLException {
         MovimientoInventario movimiento = createMovimientoInventarioParaTest();
 
-        // Verificar que la fecha de movimiento esté cerca de la hora actual
+        // Verificar que la fecha de movimiento esté cerca de la hora actual (margen de 5 segundos)
         assertTrue(movimiento.getFechaMovimiento().isAfter(LocalDateTime.now().minusSeconds(5)), "La fecha de movimiento debe ser reciente.");
         assertTrue(movimiento.getFechaMovimiento().isBefore(LocalDateTime.now().plusSeconds(5)), "La fecha de movimiento debe ser reciente.");
     }
@@ -112,7 +115,7 @@ class MovimientoInventarioDAOTest {
         assertEquals(nuevoTipo, updatedMovimiento.getTipoMovimiento(), "El tipo de movimiento actualizado debe coincidir.");
         assertEquals(nuevaDescripcion, updatedMovimiento.getDescripcion(), "La descripción actualizada debe coincidir.");
         assertEquals(nuevaCantidad, updatedMovimiento.getCantidad(), "La cantidad actualizada debe coincidir.");
-        // La fecha de movimiento no debería cambiar en un update a menos que se especifique explícitamente
+        // La fecha de movimiento no debería cambiar en un update a menos que se especifique explícitamente en el DAO
         assertEquals(movimientoOriginal.getFechaMovimiento(), updatedMovimiento.getFechaMovimiento(), "La fecha de movimiento no debería cambiar en el update.");
     }
 
@@ -135,39 +138,42 @@ class MovimientoInventarioDAOTest {
     void testSearch() throws SQLException {
         // Creamos varios movimientos con descripciones específicas para buscar
         Random rand = new Random();
-        String uniqueDesc1 = "Buscar Descr 1 - " + System.currentTimeMillis() + "-" + rand.nextInt(1000);
-        String uniqueDesc2 = "Otra Descrip 2 - " + System.currentTimeMillis() + "-" + rand.nextInt(1000);
-        String commonTerm = "MiTerminoBusqueda";
+        String uniqueTerm = "BuscarTermino" + System.currentTimeMillis() + "-" + rand.nextInt(1000);
+        String desc1 = uniqueTerm + " - Ejemplo 1";
+        String desc2 = "Otro Movimiento con " + uniqueTerm;
+        String desc3 = "Solo esta";
 
-        MovimientoInventario mov1 = new MovimientoInventario(COMPUTADORA_ID_EXISTENTE, MovimientoInventario.TIPO_ENTRADA, 1, commonTerm + " " + uniqueDesc1);
-        MovimientoInventario mov2 = new MovimientoInventario(COMPUTADORA_ID_EXISTENTE, MovimientoInventario.TIPO_SALIDA, 1, commonTerm + " " + uniqueDesc2);
-        MovimientoInventario mov3 = new MovimientoInventario(COMPUTADORA_ID_EXISTENTE, MovimientoInventario.TIPO_MANTENIMIENTO, 1, "Solo esta");
+        MovimientoInventario mov1 = createMovimientoInventarioParaTest();
+        mov1.setDescripcion(desc1);
+        movimientoInventarioDAO.update(mov1); // Actualizar para usar la descripción única
+        // El ID ya está en idsCreadosParaLimpieza
 
-        movimientoInventarioDAO.create(mov1);
-        movimientoInventarioDAO.create(mov2);
-        movimientoInventarioDAO.create(mov3);
+        MovimientoInventario mov2 = createMovimientoInventarioParaTest();
+        mov2.setDescripcion(desc2);
+        movimientoInventarioDAO.update(mov2);
+        // El ID ya está en idsCreadosParaLimpieza
 
-        idsCreadosParaLimpieza.add(mov1.getMovimientoID());
-        idsCreadosParaLimpieza.add(mov2.getMovimientoID());
-        idsCreadosParaLimpieza.add(mov3.getMovimientoID());
+        MovimientoInventario mov3 = createMovimientoInventarioParaTest();
+        mov3.setDescripcion(desc3);
+        movimientoInventarioDAO.update(mov3);
+        // El ID ya está en idsCreadosParaLimpieza
+
 
         // Test de búsqueda por un término común
-        List<MovimientoInventario> foundByCommonTerm = movimientoInventarioDAO.search(commonTerm);
+        List<MovimientoInventario> foundByCommonTerm = movimientoInventarioDAO.search(uniqueTerm);
         assertFalse(foundByCommonTerm.isEmpty(), "La búsqueda por término común debería devolver resultados.");
         assertEquals(2, foundByCommonTerm.size(), "Debería encontrar 2 movimientos con el término común.");
-        assertTrue(foundByCommonTerm.stream().anyMatch(m -> m.getDescripcion().contains(uniqueDesc1)), "Debería encontrar el movimiento 1.");
-        assertTrue(foundByCommonTerm.stream().anyMatch(m -> m.getDescripcion().contains(uniqueDesc2)), "Debería encontrar el movimiento 2.");
+        assertTrue(foundByCommonTerm.stream().anyMatch(m -> m.getDescripcion().equals(desc1)), "Debería encontrar el movimiento 1 con la descripción exacta.");
+        assertTrue(foundByCommonTerm.stream().anyMatch(m -> m.getDescripcion().equals(desc2)), "Debería encontrar el movimiento 2 con la descripción exacta.");
 
-        // Test de búsqueda por una descripción única
-        List<MovimientoInventario> foundByUniqueDesc = movimientoInventarioDAO.search(uniqueDesc1);
-        assertEquals(1, foundByUniqueDesc.size(), "La búsqueda por descripción única debería devolver 1 resultado.");
-        // Se corrige la aserción para que solo compare la parte única de la descripción.
-        // Se asume que el 'commonTerm + " "' tiene 16 caracteres, ajusta si es diferente
-        assertEquals(uniqueDesc1, foundByUniqueDesc.get(0).getDescripcion().substring(commonTerm.length() + 1), "Debería encontrar la descripción única.");
+        // Test de búsqueda por una descripción única (exacta)
+        List<MovimientoInventario> foundByExactDesc = movimientoInventarioDAO.search(desc1);
+        assertEquals(1, foundByExactDesc.size(), "La búsqueda por descripción exacta debería devolver 1 resultado.");
+        assertEquals(desc1, foundByExactDesc.get(0).getDescripcion(), "Debería encontrar el movimiento con la descripción única.");
 
 
         // Test de búsqueda que no debería devolver resultados
-        List<MovimientoInventario> notFound = movimientoInventarioDAO.search("TerminoInexistente123");
+        List<MovimientoInventario> notFound = movimientoInventarioDAO.search("TerminoInexistente" + rand.nextInt(1000));
         assertTrue(notFound.isEmpty(), "La búsqueda de un término inexistente no debería devolver resultados.");
     }
 
@@ -189,9 +195,8 @@ class MovimientoInventarioDAOTest {
     @Test
     @DisplayName("Test: Obtener todos los movimientos de inventario")
     void testGetAllMovimientoInventario() throws SQLException {
-        // Asegurarse de que haya al menos 3 movimientos para probar
-        int initialCount = movimientoInventarioDAO.getAllMovimientoInventario().size();
-
+        // Asegurarse de que haya al menos 3 movimientos para probar creando algunos
+        // Es mejor no depender de un estado inicial desconocido de la DB, sino crearlos para el test.
         MovimientoInventario mov1 = createMovimientoInventarioParaTest();
         MovimientoInventario mov2 = createMovimientoInventarioParaTest();
         MovimientoInventario mov3 = createMovimientoInventarioParaTest();
@@ -199,9 +204,8 @@ class MovimientoInventarioDAOTest {
         List<MovimientoInventario> allMovimientos = movimientoInventarioDAO.getAllMovimientoInventario();
 
         assertFalse(allMovimientos.isEmpty(), "La lista de todos los movimientos no debe estar vacía.");
-        assertTrue(allMovimientos.size() >= (initialCount + 3), "La cantidad de movimientos debe ser al menos la inicial más los 3 creados.");
-
-        // Verificar que los movimientos creados están en la lista
+        // Verificar que la lista contenga los movimientos recién creados.
+        // No asertamos un tamaño exacto ya que puede haber otros movimientos en la DB.
         assertTrue(allMovimientos.stream().anyMatch(m -> m.getMovimientoID() == mov1.getMovimientoID()), "El movimiento 1 debe estar en la lista.");
         assertTrue(allMovimientos.stream().anyMatch(m -> m.getMovimientoID() == mov2.getMovimientoID()), "El movimiento 2 debe estar en la lista.");
         assertTrue(allMovimientos.stream().anyMatch(m -> m.getMovimientoID() == mov3.getMovimientoID()), "El movimiento 3 debe estar en la lista.");
